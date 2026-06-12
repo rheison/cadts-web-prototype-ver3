@@ -22,15 +22,15 @@ Your site will be available at:
 https://YOUR-GITHUB-USERNAME.github.io/YOUR-REPOSITORY-NAME/
 ```
 
-For the user's Version 2 project, the expected URL is:
+For the Version 3 project, the expected URL is:
 
 ```text
-https://rheison.github.io/cadts-web-prototype-ver2/
+https://rheison.github.io/cadts-web-prototype-ver3/
 ```
 
 ## Existing repository option
 
-If you want a clean start in the existing Version 2 repository:
+If you want a clean start in the Version 3 repository:
 
 1. Download a backup of the current repository first.
 2. Delete the old frontend files.

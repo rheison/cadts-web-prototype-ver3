@@ -1,4 +1,4 @@
--- CADTS SecureDestroy Version 2 Supabase schema
+-- CADTS SecureDestroy Version 3 Supabase schema for Milestones 1, 2, and 3
 -- Run this file in Supabase SQL Editor before using the GitHub Pages app.
 
 create extension if not exists pgcrypto;

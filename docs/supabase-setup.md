@@ -35,13 +35,13 @@ Authentication -> URL Configuration
 Use your GitHub Pages URL as the Site URL:
 
 ```text
-https://rheison.github.io/cadts-web-prototype-ver2/
+https://rheison.github.io/cadts-web-prototype-ver3/
 ```
 
 Add this redirect URL:
 
 ```text
-https://rheison.github.io/cadts-web-prototype-ver2/**
+https://rheison.github.io/cadts-web-prototype-ver3/**
 ```
 
 ## 4. Configure email login

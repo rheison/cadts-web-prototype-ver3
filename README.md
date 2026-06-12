@@ -1,4 +1,4 @@
-# CADTS SecureDestroy Version 3
+# CADTS SecureDestroy Version 3 Fresh Start
 
 This is a GitHub Pages-ready working prototype for the CADTS / SecureDestroy Cloud Asset Destruction Tracking System.
 
@@ -63,13 +63,13 @@ Authentication -> URL Configuration
 Set your Site URL to your GitHub Pages URL, for example:
 
 ```text
-https://rheison.github.io/cadts-web-prototype-ver2/
+https://rheison.github.io/cadts-web-prototype-ver3/
 ```
 
 Add this Redirect URL:
 
 ```text
-https://rheison.github.io/cadts-web-prototype-ver2/**
+https://rheison.github.io/cadts-web-prototype-ver3/**
 ```
 
 For an easy classroom demo, go to:
