@@ -18,3 +18,4 @@ window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON
     detectSessionInUrl: true
   }
 });
+// force GitHub Pages redeploy
