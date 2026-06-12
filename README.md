@@ -1,4 +1,4 @@
-# CADTS SecureDestroy Version 2 Fresh Start
+# CADTS SecureDestroy Version 3
 
 This is a GitHub Pages-ready working prototype for the CADTS / SecureDestroy Cloud Asset Destruction Tracking System.
 
