@@ -2,7 +2,7 @@
 // Replace these placeholders with your Supabase project values:
 // Supabase Dashboard -> Project Settings -> API
 
-const SUPABASE_URL = "https://your-project-id.supabase.co";
+const SUPABASE_URL = "https://iphtstjhudsmuaugfpth.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_DFa4Dkzu4Px2nYSOHmHPxQ_GnD3P_FN";
 
 window.CADTS_SUPABASE_CONFIGURED =
