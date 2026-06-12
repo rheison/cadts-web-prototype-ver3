@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CADTS SecureDestroy | Version 2</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div>
+      <p class="eyebrow">CADTS SecureDestroy</p>
+      <h1>Cloud Asset Destruction Tracking System</h1>
+      <p class="subtitle">Version 2 web prototype with hosted authentication and database support.</p>
+    </div>
+    <button id="logoutButton" class="secondary hidden" type="button">Log Out</button>
+  </header>
+
+  <main>
+    <section id="setupWarning" class="notice warning hidden">
+      <strong>Supabase is not configured yet.</strong>
+      Open <code>supabase-config.js</code> and replace the placeholder URL and anon key with your Supabase project values.
+    </section>
+
+    <section id="authView" class="auth-grid">
+      <article class="card">
+        <h2>Log In</h2>
+        <p>Use an existing CADTS account to access your role-based dashboard.</p>
+        <form id="loginForm" class="form-stack">
+          <label for="loginEmail">Email</label>
+          <input id="loginEmail" type="email" autocomplete="email" required />
+
+          <label for="loginPassword">Password</label>
+          <input id="loginPassword" type="password" autocomplete="current-password" required />
+
+          <button type="submit">Log In</button>
+        </form>
+      </article>
+
+      <article class="card">
+        <h2>Create New Account</h2>
+        <p>New users are created as <strong>Customer / Asset Owner</strong> accounts by default. Admins can change roles after registration.</p>
+        <form id="registerForm" class="form-stack">
+          <label for="registerFullName">Full Name</label>
+          <input id="registerFullName" type="text" autocomplete="name" required />
+
+          <label for="registerEmail">Email</label>
+          <input id="registerEmail" type="email" autocomplete="email" required />
+
+          <label for="registerPassword">Password</label>
+          <input id="registerPassword" type="password" autocomplete="new-password" minlength="6" required />
+
+          <button type="submit">Create Account</button>
+        </form>
+      </article>
+    </section>
+
+    <section id="dashboardView" class="hidden">
+      <article class="dashboard-hero">
+        <div>
+          <p class="eyebrow">Signed in as</p>
+          <h2 id="profileName">Loading user...</h2>
+          <p id="profileEmail" class="muted"></p>
+        </div>
+        <div class="role-badge">
+          <span>Role</span>
+          <strong id="profileRole">Unknown</strong>
+        </div>
+      </article>
+
+      <nav id="roleNav" class="tab-nav" aria-label="CADTS sections"></nav>
+
+      <section id="customerSection" class="section-grid hidden">
+        <article class="card">
+          <h2>Register Asset</h2>
+          <p>Customer / Asset Owner accounts can register assets and request secure destruction.</p>
+          <form id="assetForm" class="form-stack">
+            <label for="assetTag">Asset Tag</label>
+            <input id="assetTag" type="text" placeholder="LAP-001 or CLOUD-VM-01" required />
+
+            <label for="assetType">Asset Type</label>
+            <select id="assetType" required>
+              <option value="Laptop">Laptop</option>
+              <option value="Desktop">Desktop</option>
+              <option value="Server">Server</option>
+              <option value="Mobile Device">Mobile Device</option>
+              <option value="Storage Media">Storage Media</option>
+              <option value="Cloud Workload">Cloud Workload</option>
+              <option value="Database Snapshot">Database Snapshot</option>
+              <option value="Other Digital Media">Other Digital Media</option>
+            </select>
+
+            <label for="assetDescription">Description</label>
+            <textarea id="assetDescription" rows="3" placeholder="Describe the system, media, or cloud resource."></textarea>
+
+            <button type="submit">Add Asset</button>
+          </form>
+        </article>
+
+        <article id="createTicketSection" class="card">
+          <h2>Create Destruction Ticket</h2>
+          <p>This form is only available to Customer / Asset Owner accounts.</p>
+          <form id="ticketForm" class="form-stack">
+            <label for="ticketAssetId">Asset</label>
+            <select id="ticketAssetId" required></select>
+
+            <label for="requestReason">Reason for Destruction</label>
+            <textarea id="requestReason" rows="4" placeholder="End of lifecycle, decommissioned cloud resource, damaged drive, policy retention expiration, etc." required></textarea>
+
+            <button type="submit">Submit Destruction Ticket</button>
+          </form>
+        </article>
+      </section>
+
+      <section id="adminSection" class="hidden">
+        <article class="card">
+          <h2>User Management</h2>
+          <p>Admins can assign roles after users create accounts. New accounts start as Customer / Asset Owner.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Full Name</th>
+                  <th>Current Role</th>
+                  <th>Change Role</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="workflowSection" class="hidden">
+        <article class="card">
+          <h2>Workflow Queue</h2>
+          <p id="workflowHelp">Tickets appear here based on your role.</p>
+          <div id="workflowCards" class="ticket-list"></div>
+        </article>
+      </section>
+
+      <section id="reportsSection" class="hidden">
+        <article class="card">
+          <div class="report-header">
+            <div>
+              <h2>Compliance Reports</h2>
+              <p>Review assets, destruction tickets, and audit events.</p>
+            </div>
+            <button id="exportTicketsButton" class="secondary" type="button">Export Tickets CSV</button>
+          </div>
+          <div id="reportContent" class="report-grid"></div>
+        </article>
+      </section>
+
+      <section id="auditSection" class="hidden">
+        <article class="card">
+          <h2>Audit Logs</h2>
+          <p>Admin and Auditor accounts can review system activity.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Actor</th>
+                  <th>Action</th>
+                  <th>Table</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody id="auditTableBody"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="myRecordsSection" class="hidden">
+        <article class="card">
+          <h2>My Assets</h2>
+          <div id="assetsList" class="record-list"></div>
+        </article>
+        <article class="card">
+          <h2>My Tickets</h2>
+          <div id="ticketsList" class="record-list"></div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <p>CADTS SecureDestroy Version 2 prototype for Milestone 1 and Milestone 2 demonstration.</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
