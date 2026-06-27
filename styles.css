@@ -152,6 +152,12 @@ footer p,
   gap: 0.7rem;
 }
 
+.auth-helper {
+  margin-top: 1rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
 label {
   color: var(--text);
   font-size: 0.9rem;
@@ -264,6 +270,39 @@ th {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.8rem;
+}
+
+.ticket-form {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.9rem;
+}
+
+.evidence-list,
+.audit-note-list {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evidence-list li,
+.audit-note-list li {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 0.65rem;
+  background: rgba(16, 31, 51, 0.58);
+}
+
+.evidence-list button {
+  margin-top: 0.45rem;
+}
+
+.audit-note-list p {
+  margin-bottom: 0.25rem;
 }
 
 .status {

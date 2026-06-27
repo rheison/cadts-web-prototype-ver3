@@ -6,6 +6,8 @@ const state = {
   tickets: [],
   users: [],
   auditLogs: [],
+  evidenceFiles: [],
+  auditNotes: [],
   activeSection: null
 };
 
@@ -73,7 +75,12 @@ async function init() {
     showAuthView();
   }
 
-  client.auth.onAuthStateChange(async (_event, session) => {
+  client.auth.onAuthStateChange(async (event, session) => {
+    if (event === "PASSWORD_RECOVERY") {
+      showPasswordRecovery();
+      return;
+    }
+
     if (session) {
       await loadDashboard();
     } else {
@@ -95,6 +102,16 @@ function bindForms() {
       $("registerEmail").value.trim(),
       $("registerPassword").value
     );
+  });
+
+  $("resetPasswordForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await sendPasswordReset($("resetEmail").value.trim() || $("loginEmail").value.trim());
+  });
+
+  $("updatePasswordForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await updatePassword();
   });
 
   $("assetForm").addEventListener("submit", async (event) => {
@@ -138,6 +155,58 @@ async function signUp(fullName, email, password) {
   setStatus("Account created. New accounts start as Customer / Asset Owner. Log in with the new account.");
 }
 
+async function sendPasswordReset(email) {
+  if (!isConfigured()) {
+    setStatus("Supabase is not configured yet. Update supabase-config.js first.", "error");
+    return;
+  }
+
+  if (!email) {
+    setStatus("Enter the account email address first.", "error");
+    return;
+  }
+
+  const { error } = await client.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.href.split("#")[0]
+  });
+
+  if (error) {
+    setStatus(error.message, "error");
+    return;
+  }
+
+  $("resetPasswordForm").reset();
+  setStatus("Password reset email sent. Open the email link, then enter a new password.");
+}
+
+function showPasswordRecovery() {
+  $("authView").classList.remove("hidden");
+  $("passwordRecoveryCard").classList.remove("hidden");
+  $("dashboardView").classList.add("hidden");
+  $("logoutButton").classList.add("hidden");
+}
+
+async function updatePassword() {
+  const password = $("newPassword").value;
+  const confirmation = $("confirmNewPassword").value;
+
+  if (password !== confirmation) {
+    setStatus("The new passwords do not match.", "error");
+    return;
+  }
+
+  const { error } = await client.auth.updateUser({ password });
+  if (error) {
+    setStatus(error.message, "error");
+    return;
+  }
+
+  $("updatePasswordForm").reset();
+  $("passwordRecoveryCard").classList.add("hidden");
+  setStatus("Password updated. You can now use the new password.");
+  await loadDashboard();
+}
+
 async function signIn(email, password) {
   if (!isConfigured()) {
     setStatus("Supabase is not configured yet. Update supabase-config.js first.", "error");
@@ -158,6 +227,7 @@ async function signOut() {
 function showAuthView() {
   state.profile = null;
   $("authView").classList.remove("hidden");
+  $("passwordRecoveryCard").classList.add("hidden");
   $("dashboardView").classList.add("hidden");
   $("logoutButton").classList.add("hidden");
 }
@@ -260,7 +330,9 @@ async function refreshAllData() {
     loadAssets(),
     loadTickets(),
     state.profile.role === "admin" ? loadUsers() : Promise.resolve(),
-    ["admin", "auditor"].includes(state.profile.role) ? loadAuditLogs() : Promise.resolve()
+    loadEvidenceFiles(),
+    ["admin", "auditor"].includes(state.profile.role) ? loadAuditLogs() : Promise.resolve(),
+    ["admin", "auditor"].includes(state.profile.role) ? loadAuditNotes() : Promise.resolve()
   ]);
 }
 
@@ -292,6 +364,20 @@ async function loadTickets() {
   state.tickets = data || [];
 }
 
+async function loadEvidenceFiles() {
+  const { data, error } = await client
+    .from("ticket_evidence_files")
+    .select("*, uploader:profiles(email, full_name)")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    state.evidenceFiles = [];
+    return;
+  }
+  state.evidenceFiles = data || [];
+}
+
 async function loadUsers() {
   const { data, error } = await client
     .from("profiles")
@@ -319,6 +405,20 @@ async function loadAuditLogs() {
     return;
   }
   state.auditLogs = data || [];
+}
+
+async function loadAuditNotes() {
+  const { data, error } = await client
+    .from("ticket_audit_notes")
+    .select("*, auditor:profiles(email, full_name)")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    state.auditNotes = [];
+    return;
+  }
+  state.auditNotes = data || [];
 }
 
 async function createAsset() {
@@ -491,6 +591,8 @@ function renderWorkflowQueue() {
       await processTicketAction(ticketId, action);
     });
   });
+
+  bindEvidenceButtons(container);
 }
 
 function ticketCardHtml(ticket) {
@@ -501,6 +603,8 @@ function ticketCardHtml(ticket) {
     <p><strong>Customer:</strong> ${escapeHtml(ticket.customer?.full_name || ticket.customer?.email || ticket.customer_id)}</p>
     <p><strong>Reason:</strong> ${escapeHtml(ticket.request_reason)}</p>
     <p><strong>Evidence:</strong> ${escapeHtml(ticket.evidence_notes || "No evidence submitted yet.")}</p>
+    ${evidenceListHtml(ticket.id)}
+    ${auditNotesHtml(ticket.id)}
     <p class="muted">Created ${formatDate(ticket.created_at)}</p>
   `;
 }
@@ -523,10 +627,178 @@ function workflowActionsHtml(ticket) {
   }
 
   if (actions.length === 0) {
-    return `<p class="muted">No actions available for this ticket.</p>`;
+    return evidenceUploadFormHtml(ticket) || `<p class="muted">No actions available for this ticket.</p>`;
   }
 
-  return `<div class="ticket-actions">${actions.join("")}</div>`;
+  return `
+    <div class="ticket-actions">${actions.join("")}</div>
+    ${evidenceUploadFormHtml(ticket)}
+  `;
+}
+
+function evidenceForTicket(ticketId) {
+  return state.evidenceFiles.filter((file) => file.ticket_id === ticketId);
+}
+
+function auditNotesForTicket(ticketId) {
+  return state.auditNotes.filter((note) => note.ticket_id === ticketId);
+}
+
+function evidenceListHtml(ticketId) {
+  const files = evidenceForTicket(ticketId);
+  if (files.length === 0) {
+    return `<p class="muted"><strong>Attachments:</strong> No uploaded files attached.</p>`;
+  }
+
+  return `
+    <p><strong>Attachments:</strong></p>
+    <ul class="evidence-list">
+      ${files.map((file) => `
+        <li>
+          <strong>${escapeHtml(file.file_name)}</strong>
+          <p class="muted">${escapeHtml(file.description || "No description")} | Uploaded by ${escapeHtml(file.uploader?.full_name || file.uploader?.email || "Technician")} on ${formatDate(file.created_at)}</p>
+          <button class="small secondary" type="button" data-view-evidence="${escapeHtml(file.storage_path)}">Open Evidence</button>
+        </li>
+      `).join("")}
+    </ul>
+  `;
+}
+
+function auditNotesHtml(ticketId) {
+  const notes = auditNotesForTicket(ticketId);
+  if (notes.length === 0) return "";
+
+  return `
+    <p><strong>Auditor Notes:</strong></p>
+    <ul class="audit-note-list">
+      ${notes.map((note) => `
+        <li>
+          <p>${escapeHtml(note.note)}</p>
+          <p class="muted">${escapeHtml(note.auditor?.full_name || note.auditor?.email || "Auditor")} | ${formatDate(note.created_at)}</p>
+        </li>
+      `).join("")}
+    </ul>
+  `;
+}
+
+function evidenceUploadFormHtml(ticket) {
+  const role = state.profile.role;
+  if (!["admin", "technician"].includes(role) || !["Approved", "Assigned", "Destroyed"].includes(ticket.status)) {
+    return "";
+  }
+
+  return `
+    <form class="ticket-form evidence-form" data-ticket-id="${escapeHtml(ticket.id)}">
+      <label>Technician Evidence Notes</label>
+      <textarea rows="2" name="evidenceNotes" placeholder="Describe the destruction evidence, photo, screenshot, or certificate reference.">${escapeHtml(ticket.evidence_notes || "")}</textarea>
+
+      <label>Attach Photo, Screenshot, or Document</label>
+      <input type="file" name="evidenceFile" accept="image/*,.pdf,.doc,.docx,.txt,.csv" />
+
+      <label>Attachment Description</label>
+      <input type="text" name="evidenceDescription" placeholder="Example: Sanitization screenshot or device destruction photo" />
+
+      <button class="small secondary" type="submit">Upload Evidence to Ticket</button>
+    </form>
+  `;
+}
+
+function bindEvidenceButtons(scope = document) {
+  scope.querySelectorAll(".evidence-form").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await uploadTicketEvidence(form.dataset.ticketId, form);
+    });
+  });
+
+  scope.querySelectorAll("[data-view-evidence]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      await openEvidenceFile(event.target.dataset.viewEvidence);
+    });
+  });
+}
+
+async function uploadTicketEvidence(ticketId, form) {
+  if (!["admin", "technician"].includes(state.profile.role)) {
+    setStatus("Only Technician or Admin accounts can upload ticket evidence.", "error");
+    return;
+  }
+
+  const fileInput = form.elements.evidenceFile;
+  const description = form.elements.evidenceDescription.value.trim();
+  const evidenceNotes = form.elements.evidenceNotes.value.trim();
+  const file = fileInput.files[0];
+
+  if (!file) {
+    setStatus("Choose a photo, screenshot, or document before uploading.", "error");
+    return;
+  }
+
+  const storagePath = `${ticketId}/${Date.now()}-${sanitizeFileName(file.name)}`;
+  const { error: uploadError } = await client.storage
+    .from("ticket-evidence")
+    .upload(storagePath, file, {
+      cacheControl: "3600",
+      upsert: false
+    });
+
+  if (uploadError) {
+    setStatus(uploadError.message, "error");
+    return;
+  }
+
+  const { error: metadataError } = await client.from("ticket_evidence_files").insert({
+    ticket_id: ticketId,
+    uploaded_by: state.profile.id,
+    file_name: file.name,
+    file_type: file.type || "application/octet-stream",
+    file_size: file.size,
+    storage_path: storagePath,
+    description
+  });
+
+  if (metadataError) {
+    setStatus(metadataError.message, "error");
+    return;
+  }
+
+  if (evidenceNotes) {
+    await client
+      .from("destruction_tickets")
+      .update({
+        evidence_notes: evidenceNotes,
+        technician_id: state.profile.id
+      })
+      .eq("id", ticketId);
+  }
+
+  await logAction("Uploaded ticket evidence", "ticket_evidence_files", ticketId, {
+    file_name: file.name,
+    storage_path: storagePath
+  });
+
+  form.reset();
+  await refreshAllData();
+  renderWorkflowQueue();
+  renderMyRecords();
+  setStatus("Evidence uploaded and attached to the ticket.");
+}
+
+async function openEvidenceFile(storagePath) {
+  const { data, error } = await client.storage
+    .from("ticket-evidence")
+    .createSignedUrl(storagePath, 300);
+
+  if (error) {
+    setStatus(error.message, "error");
+    return;
+  }
+
+  window.open(data.signedUrl, "_blank", "noopener");
+}
+
+function sanitizeFileName(fileName) {
+  return fileName.replace(/[^a-z0-9._-]/gi, "_");
 }
 
 async function processTicketAction(ticketId, action) {
@@ -549,7 +821,9 @@ async function processTicketAction(ticketId, action) {
   }
 
   if (action === "destroy") {
-    const notes = prompt("Enter destruction evidence notes:", "Asset sanitized/destroyed according to CADTS procedure.");
+    const form = document.querySelector(`.evidence-form[data-ticket-id="${ticketId}"]`);
+    const formNotes = form?.elements.evidenceNotes?.value.trim();
+    const notes = formNotes || prompt("Enter destruction evidence notes:", "Asset sanitized/destroyed according to CADTS procedure.");
     if (notes === null) return;
     update.status = "Destroyed";
     update.technician_id = state.profile.id;
@@ -558,6 +832,11 @@ async function processTicketAction(ticketId, action) {
   }
 
   if (action === "certify") {
+    if (evidenceForTicket(ticketId).length === 0) {
+      setStatus("Upload at least one evidence file before certifying the ticket.", "error");
+      return;
+    }
+
     const certificateUrl = prompt("Enter certificate reference or URL:", `CERT-${ticket.id.slice(0, 8).toUpperCase()}`);
     if (certificateUrl === null) return;
     update.status = "Certified";
@@ -600,6 +879,7 @@ function renderReports() {
 function renderAuditLogs() {
   const tbody = $("auditTableBody");
   tbody.innerHTML = "";
+  renderAuditorTicketReview();
 
   if (state.auditLogs.length === 0) {
     tbody.innerHTML = `<tr><td colspan="5">No audit logs found.</td></tr>`;
@@ -617,6 +897,75 @@ function renderAuditLogs() {
     `;
     tbody.appendChild(row);
   });
+}
+
+function renderAuditorTicketReview() {
+  const container = $("auditTicketReview");
+  const closedTickets = state.tickets.filter((ticket) => ticket.status === "Certified");
+
+  if (closedTickets.length === 0) {
+    container.innerHTML = `<p class="muted">No certified tickets are ready for auditor comments yet.</p>`;
+    return;
+  }
+
+  container.innerHTML = closedTickets.map((ticket) => `
+    <article class="ticket-card">
+      ${ticketCardHtml(ticket)}
+      ${auditorNoteFormHtml(ticket)}
+    </article>
+  `).join("");
+
+  document.querySelectorAll(".audit-note-form").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await addAuditorNote(form.dataset.ticketId, form);
+    });
+  });
+
+  bindEvidenceButtons(container);
+}
+
+function auditorNoteFormHtml(ticket) {
+  if (!["admin", "auditor"].includes(state.profile.role)) return "";
+
+  return `
+    <form class="ticket-form audit-note-form" data-ticket-id="${escapeHtml(ticket.id)}">
+      <label>Post-Closeout Auditor Note</label>
+      <textarea rows="3" name="auditNote" placeholder="Add compliance comment, exception, or follow-up note after closeout." required></textarea>
+      <button class="small secondary" type="submit">Add Auditor Note</button>
+    </form>
+  `;
+}
+
+async function addAuditorNote(ticketId, form) {
+  if (!["admin", "auditor"].includes(state.profile.role)) {
+    setStatus("Only Auditor or Admin accounts can add post-closeout notes.", "error");
+    return;
+  }
+
+  const note = form.elements.auditNote.value.trim();
+  if (!note) {
+    setStatus("Enter an auditor note before saving.", "error");
+    return;
+  }
+
+  const { data, error } = await client.from("ticket_audit_notes").insert({
+    ticket_id: ticketId,
+    auditor_id: state.profile.id,
+    note
+  }).select().single();
+
+  if (error) {
+    setStatus(error.message, "error");
+    return;
+  }
+
+  await logAction("Added post-closeout auditor note", "ticket_audit_notes", data.id, { ticket_id: ticketId });
+  form.reset();
+  await refreshAllData();
+  renderAuditLogs();
+  renderReports();
+  setStatus("Auditor note added to the closed ticket.");
 }
 
 function renderMyRecords() {
@@ -650,6 +999,8 @@ function renderMyRecords() {
       </article>
     `).join("")
     : `<p class="muted">No tickets found.</p>`;
+
+  bindEvidenceButtons(ticketsList);
 }
 
 async function logAction(action, tableName, recordId, details = {}) {

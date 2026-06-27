@@ -35,6 +35,11 @@
 
           <button type="submit">Log In</button>
         </form>
+        <form id="resetPasswordForm" class="form-stack auth-helper">
+          <label for="resetEmail">Forgot Password</label>
+          <input id="resetEmail" type="email" autocomplete="email" placeholder="Enter your email for a reset link" required />
+          <button class="secondary" type="submit">Send Password Reset Link</button>
+        </form>
       </article>
 
       <article class="card">
@@ -51,6 +56,20 @@
           <input id="registerPassword" type="password" autocomplete="new-password" minlength="6" required />
 
           <button type="submit">Create Account</button>
+        </form>
+      </article>
+
+      <article id="passwordRecoveryCard" class="card hidden">
+        <h2>Set New Password</h2>
+        <p>Enter a new password after opening the reset link from your email.</p>
+        <form id="updatePasswordForm" class="form-stack">
+          <label for="newPassword">New Password</label>
+          <input id="newPassword" type="password" autocomplete="new-password" minlength="6" required />
+
+          <label for="confirmNewPassword">Confirm New Password</label>
+          <input id="confirmNewPassword" type="password" autocomplete="new-password" minlength="6" required />
+
+          <button type="submit">Update Password</button>
         </form>
       </article>
     </section>
@@ -171,6 +190,11 @@
               <tbody id="auditTableBody"></tbody>
             </table>
           </div>
+        </article>
+        <article class="card">
+          <h2>Closed Ticket Auditor Notes</h2>
+          <p>Auditors can add post-closeout comments to certified tickets without changing the ticket status.</p>
+          <div id="auditTicketReview" class="ticket-list"></div>
         </article>
       </section>
 
