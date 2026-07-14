@@ -693,7 +693,7 @@ function evidenceUploadFormHtml(ticket) {
       <textarea rows="2" name="evidenceNotes" placeholder="Describe the destruction evidence, photo, screenshot, or certificate reference.">${escapeHtml(ticket.evidence_notes || "")}</textarea>
 
       <label>Attach Photo, Screenshot, or Document</label>
-      <input type="file" name="evidenceFile" accept="image/*,.pdf,.doc,.docx,.txt,.csv" />
+      <input type="file" name="evidenceFile" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.txt,.csv" />
 
       <label>Attachment Description</label>
       <input type="text" name="evidenceDescription" placeholder="Example: Sanitization screenshot or device destruction photo" />
@@ -718,9 +718,18 @@ function bindEvidenceButtons(scope = document) {
   });
 }
 
+const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024;
+const ALLOWED_EVIDENCE_FILE = /\.(jpe?g|png|gif|webp|pdf|docx?|txt|csv)$/i;
+
 async function uploadTicketEvidence(ticketId, form) {
-  if (!["admin", "technician"].includes(state.profile.role)) {
+  if (!state.profile || !["admin", "technician"].includes(state.profile.role)) {
     setStatus("Only Technician or Admin accounts can upload ticket evidence.", "error");
+    return;
+  }
+
+  const ticket = state.tickets.find((item) => item.id === ticketId);
+  if (!ticket || !["Approved", "Assigned", "Destroyed"].includes(ticket.status)) {
+    setStatus("Evidence can only be uploaded to an Approved, Assigned, or Destroyed ticket.", "error");
     return;
   }
 
@@ -728,60 +737,110 @@ async function uploadTicketEvidence(ticketId, form) {
   const description = form.elements.evidenceDescription.value.trim();
   const evidenceNotes = form.elements.evidenceNotes.value.trim();
   const file = fileInput.files[0];
+  const submitButton = form.querySelector('button[type="submit"]');
 
   if (!file) {
     setStatus("Choose a photo, screenshot, or document before uploading.", "error");
     return;
   }
 
+  if (file.size <= 0 || file.size > MAX_EVIDENCE_FILE_SIZE) {
+    setStatus("Evidence files must be larger than 0 bytes and no more than 10 MB.", "error");
+    return;
+  }
+
+  if (!ALLOWED_EVIDENCE_FILE.test(file.name)) {
+    setStatus("Allowed evidence types: JPG, PNG, GIF, WEBP, PDF, DOC, DOCX, TXT, and CSV.", "error");
+    return;
+  }
+
   const storagePath = `${ticketId}/${Date.now()}-${sanitizeFileName(file.name)}`;
-  const { error: uploadError } = await client.storage
-    .from("ticket-evidence")
-    .upload(storagePath, file, {
-      cacheControl: "3600",
-      upsert: false
+  let storageUploaded = false;
+  let metadataId = null;
+
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = "Uploading...";
+  }
+
+  try {
+    const { error: uploadError } = await client.storage
+      .from("ticket-evidence")
+      .upload(storagePath, file, {
+        cacheControl: "3600",
+        contentType: file.type || undefined,
+        upsert: false
+      });
+
+    if (uploadError) throw uploadError;
+    storageUploaded = true;
+
+    const { data: metadata, error: metadataError } = await client
+      .from("ticket_evidence_files")
+      .insert({
+        ticket_id: ticketId,
+        uploaded_by: state.profile.id,
+        file_name: file.name,
+        file_type: file.type || "application/octet-stream",
+        file_size: file.size,
+        storage_path: storagePath,
+        description
+      })
+      .select("id")
+      .single();
+
+    if (metadataError) throw metadataError;
+    metadataId = metadata.id;
+
+    if (evidenceNotes) {
+      const { error: ticketUpdateError } = await client
+        .from("destruction_tickets")
+        .update({
+          evidence_notes: evidenceNotes,
+          technician_id: state.profile.id
+        })
+        .eq("id", ticketId);
+
+      if (ticketUpdateError) throw ticketUpdateError;
+    }
+
+    await logAction("Uploaded ticket evidence", "ticket_evidence_files", metadataId, {
+      ticket_id: ticketId,
+      file_name: file.name,
+      storage_path: storagePath
     });
 
-  if (uploadError) {
-    setStatus(uploadError.message, "error");
-    return;
+    form.reset();
+    await refreshAllData();
+    renderWorkflowQueue();
+    renderMyRecords();
+    setStatus("Evidence uploaded and attached to the ticket.");
+  } catch (error) {
+    console.error("Evidence upload failed", error);
+
+    // Compensating cleanup prevents orphaned database rows and Storage files.
+    if (metadataId) {
+      const { error: metadataCleanupError } = await client
+        .from("ticket_evidence_files")
+        .delete()
+        .eq("id", metadataId);
+      if (metadataCleanupError) console.warn("Evidence metadata cleanup failed", metadataCleanupError);
+    }
+
+    if (storageUploaded) {
+      const { error: storageCleanupError } = await client.storage
+        .from("ticket-evidence")
+        .remove([storagePath]);
+      if (storageCleanupError) console.warn("Evidence Storage cleanup failed", storageCleanupError);
+    }
+
+    setStatus(error?.message || "The evidence upload failed.", "error");
+  } finally {
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = "Upload Evidence to Ticket";
+    }
   }
-
-  const { error: metadataError } = await client.from("ticket_evidence_files").insert({
-    ticket_id: ticketId,
-    uploaded_by: state.profile.id,
-    file_name: file.name,
-    file_type: file.type || "application/octet-stream",
-    file_size: file.size,
-    storage_path: storagePath,
-    description
-  });
-
-  if (metadataError) {
-    setStatus(metadataError.message, "error");
-    return;
-  }
-
-  if (evidenceNotes) {
-    await client
-      .from("destruction_tickets")
-      .update({
-        evidence_notes: evidenceNotes,
-        technician_id: state.profile.id
-      })
-      .eq("id", ticketId);
-  }
-
-  await logAction("Uploaded ticket evidence", "ticket_evidence_files", ticketId, {
-    file_name: file.name,
-    storage_path: storagePath
-  });
-
-  form.reset();
-  await refreshAllData();
-  renderWorkflowQueue();
-  renderMyRecords();
-  setStatus("Evidence uploaded and attached to the ticket.");
 }
 
 async function openEvidenceFile(storagePath) {
